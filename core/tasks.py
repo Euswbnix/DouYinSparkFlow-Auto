@@ -280,7 +280,6 @@ def runTasks():
         logger.info("开始执行任务")
         logger.debug(f"当前配置如下：")
         logger.debug(f"消息模板: {config.get('messageTemplate', '未找到消息模板')}")
-        logger.debug(f"一言类型: {config['hitokotoTypes']}")
         for user in userData:
             logger.debug(f"用户: {user.get('username', '未知用户')}, 目标好友: {user['targets']}")
 

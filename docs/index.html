@@ -159,22 +159,7 @@
                                 <el-form-item label="消息模板">
                                     <el-input v-model="form.MESSAGE_TEMPLATE" :rows="4" type="textarea" />
                                 </el-form-item>
-                                <el-form-item label="一言类型">
-                                    <el-checkbox-group v-model="form.HITOKOTO_TYPES">
-                                        <el-checkbox value="动画">动画</el-checkbox>
-                                        <el-checkbox value="漫画">漫画</el-checkbox>
-                                        <el-checkbox value="游戏">游戏</el-checkbox>
-                                        <el-checkbox value="文学">文学</el-checkbox>
-                                        <el-checkbox value="原创">原创</el-checkbox>
-                                        <el-checkbox value="来自网络">来自网络</el-checkbox>
-                                        <el-checkbox value="影视">影视</el-checkbox>
-                                        <el-checkbox value="诗词">诗词</el-checkbox>
-                                        <el-checkbox value="哲学">哲学</el-checkbox>
-                                        <el-checkbox value="抖机灵">抖机灵</el-checkbox>
-                                        <el-checkbox value="其他">其他</el-checkbox>
-                                    </el-checkbox-group>
-                                </el-form-item>
-                                <el-form-item label="账号匹配模式">
+<el-form-item label="账号匹配模式">
                                     <el-select v-model="form.MATCH_MODE" :options="match_mode_options" />
                                 </el-form-item>
                                 <el-form-item label="浏览器操作最长等待时间">

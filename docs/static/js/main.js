@@ -42,9 +42,7 @@ const app = createApp({
     // do not use same name with ref
     const form = reactive({
       PROXY_ADDRESS: "",
-      MESSAGE_TEMPLATE:
-        "[盖瑞]今日火花[加一]\n—— [右边] 每日一言 [左边] ——\n[API]",
-      HITOKOTO_TYPES: ["文学", "影视", "诗词", "哲学"],
+      MESSAGE_TEMPLATE: "[盖瑞]今日火花[加一]",
       MATCH_MODE: "nickname",
       BROWSER_TIMEOUT: 120000,
       FRIEND_LIST_WAIT_TIME: 2000,
@@ -64,7 +62,6 @@ const app = createApp({
       return {
         PROXY_ADDRESS: form.PROXY_ADDRESS,
         MESSAGE_TEMPLATE: form.MESSAGE_TEMPLATE,
-        HITOKOTO_TYPES: form.HITOKOTO_TYPES,
         MATCH_MODE: form.MATCH_MODE,
         BROWSER_TIMEOUT: form.BROWSER_TIMEOUT,
         FRIEND_LIST_WAIT_TIME: form.FRIEND_LIST_WAIT_TIME,
