@@ -6,6 +6,7 @@ from core.browser import get_browser
 from playwright.sync_api import Response
 import time
 import json
+import os
 
 
 complates = {}
@@ -214,66 +215,120 @@ def scroll_and_select_user(page, username, targets):
                 break
 
 
+def dump_debug_artifacts(page, name):
+    """
+    任务失败时，保存截图 + 当前 URL + 页面可见文本到 logs/，方便排查。
+    logs/ 会被 GitHub Actions 作为 artifact 上传，之后可直接查看：
+      - 是登录页/验证码 → cookie 过期或被风控
+      - 是加载中/空白页 → 纯网络加载慢
+    所有操作都包在 try 里，诊断本身出错也不会影响主流程抛出的原始异常。
+    """
+    try:
+        os.makedirs("logs", exist_ok=True)
+        safe = "".join(c for c in str(name) if c.isalnum() or c in ("-", "_"))[:40] or "unknown"
+        prefix = os.path.join("logs", f"fail_{safe}")
+
+        try:
+            url = page.url
+        except Exception:
+            url = "(无法获取 URL)"
+        logger.error(f"账号 {name} 失败时页面 URL: {url}")
+
+        # 截图（限制超时，避免页面卡死时又白等一个完整超时周期）
+        try:
+            page.screenshot(path=f"{prefix}.png", full_page=True, timeout=30000)
+            logger.info(f"已保存失败截图: {prefix}.png")
+        except Exception as e:
+            logger.warning(f"保存失败截图出错: {e}")
+
+        # 页面可见文本（最直观，一眼看出是不是登录页/验证码）
+        try:
+            text = page.inner_text("body", timeout=10000)
+            with open(f"{prefix}.txt", "w", encoding="utf-8") as f:
+                f.write(f"URL: {url}\n\n{text}")
+            logger.info(f"已保存失败页面文本: {prefix}.txt")
+        except Exception as e:
+            logger.warning(f"保存失败页面文本出错: {e}")
+
+        # 完整 HTML（兜底，文本不够时用）
+        try:
+            with open(f"{prefix}.html", "w", encoding="utf-8") as f:
+                f.write(page.content())
+            logger.info(f"已保存失败页面 HTML: {prefix}.html")
+        except Exception as e:
+            logger.warning(f"保存失败页面 HTML 出错: {e}")
+    except Exception as e:
+        logger.warning(f"保存失败诊断信息时发生意外错误: {e}")
+
+
 def do_user_task(browser, username, cookies, targets):
+        account_name = username  # [修复] 固定账号名，避免被下方好友循环变量覆盖，日志/诊断才对得上号
         context = browser.new_context()  # 每个任务使用独立的上下文
         context.set_default_navigation_timeout(config["browserTimeout"])  # 设置导航超时时间为 120 秒
         context.set_default_timeout(config["browserTimeout"])  # 设置所有操作的默认超时时间为 120 秒
 
         page = context.new_page()
         
-        if matchMode == "short_id":  # 使用抖音号进行匹配
-            page.on("response", handle_response)
-        
-        # 打开抖音创作者中心
-        retry_operation(
-            "打开抖音创作者中心",
-            page.goto,
-            retries=config["taskRetryTimes"],
-            delay=5,
-            url="https://creator.douyin.com/",
-        )
-        # 注入 Cookie
-        context.add_cookies(cookies)
+        try:
+            if matchMode == "short_id":  # 使用抖音号进行匹配
+                page.on("response", handle_response)
 
-        # 导航到消息页面
-        retry_operation(
-            "导航到消息页面",
-            page.goto,
-            retries=config["taskRetryTimes"],
-            delay=5,
-            url="https://creator.douyin.com/creator-micro/data/following/chat",
-        )
-
-        logger.debug(f"账号 {username} 开始发送消息")
-        # 滚动并选择用户
-        for username in scroll_and_select_user(page, username, targets):
-            logger.debug(f"账号 {username} 已选中好友 {username} 发送消息")
-            # 等待聊天输入框元素加载完成，使用更稳定的属性选择器
-            chat_input_selector = "xpath=//div[contains(@class, 'chat-input-')]"
-            page.wait_for_selector(chat_input_selector, timeout=config["browserTimeout"])
-            chat_input = page.locator(chat_input_selector)
-
-            # 在 chat-input-dccKiL 中输入内容
-            message = build_message()
-            for line in message.split("\\n"):
-                chat_input.type(line)  # 输入每一行
-                # 如果不是最后一行，模拟 Shift+Enter 插入换行
-                if line != message.split("\\n")[-1]:
-                    chat_input.press("Shift+Enter")  # 模拟 Shift+Enter 插入换行
-
-            logger.debug(
-                f"账号 {username} 准备发送消息给好友 {username}：\n\t{message}"
+            # 打开抖音创作者中心
+            retry_operation(
+                "打开抖音创作者中心",
+                page.goto,
+                retries=config["taskRetryTimes"],
+                delay=5,
+                url="https://creator.douyin.com/",
             )
-            logger.debug(f"账号 {username} 给好友 {username} 发送消息完成")
-            # 模拟按下回车键发送消息
-            chat_input.press("Enter")
-            time.sleep(2)  # 发送完等待一会儿
+            # 注入 Cookie
+            context.add_cookies(cookies)
 
-        context.close()  # 任务完成后关闭上下文
+            # 导航到消息页面
+            retry_operation(
+                "导航到消息页面",
+                page.goto,
+                retries=config["taskRetryTimes"],
+                delay=5,
+                url="https://creator.douyin.com/creator-micro/data/following/chat",
+            )
+
+            logger.debug(f"账号 {account_name} 开始发送消息")
+            # 滚动并选择用户
+            for friend in scroll_and_select_user(page, account_name, targets):
+                logger.debug(f"账号 {account_name} 已选中好友 {friend} 发送消息")
+                # 等待聊天输入框元素加载完成，使用更稳定的属性选择器
+                chat_input_selector = "xpath=//div[contains(@class, 'chat-input-')]"
+                page.wait_for_selector(chat_input_selector, timeout=config["browserTimeout"])
+                chat_input = page.locator(chat_input_selector)
+
+                # 在 chat-input-dccKiL 中输入内容
+                message = build_message()
+                for line in message.split("\\n"):
+                    chat_input.type(line)  # 输入每一行
+                    # 如果不是最后一行，模拟 Shift+Enter 插入换行
+                    if line != message.split("\\n")[-1]:
+                        chat_input.press("Shift+Enter")  # 模拟 Shift+Enter 插入换行
+
+                logger.debug(
+                    f"账号 {account_name} 准备发送消息给好友 {friend}：\n\t{message}"
+                )
+                logger.debug(f"账号 {account_name} 给好友 {friend} 发送消息完成")
+                # 模拟按下回车键发送消息
+                chat_input.press("Enter")
+                time.sleep(2)  # 发送完等待一会儿
+        except Exception:
+            # [新增] 失败时保存截图/URL/页面文本，便于区分 cookie 过期 vs 纯加载慢
+            dump_debug_artifacts(page, account_name)
+            raise
+        finally:
+            context.close()  # 无论成功失败都关闭上下文，避免资源泄漏
 
 
 def runTasks():
     playwright, browser = get_browser()
+    succeeded = []
+    failed = []
     try:
         # 检查是否启用多任务和任务数量
         # 创建信号量以限制并发任务数量
@@ -289,14 +344,28 @@ def runTasks():
             complates[user["unique_id"]] = []  # 初始化该用户的已完成列表
             username = user.get("username", "未知用户")
             logger.info(f"开始处理账号 {username}")
-            # 创建任务
-            do_user_task(browser, username, cookies, targets)
-            logger.info(f"账号 {username} 任务完成")
+            # [修改] 单个账号失败不再中断整体：隔离异常后继续处理下一个账号
+            try:
+                do_user_task(browser, username, cookies, targets)
+                logger.info(f"账号 {username} 任务完成")
+                succeeded.append(username)
+            except Exception as e:
+                logger.error(f"账号 {username} 任务失败，已跳过，继续处理后续账号：{e}")
+                failed.append(username)
+
+        # [新增] 汇总本次执行结果
+        logger.info(f"全部账号处理完毕：成功 {len(succeeded)} 个，失败 {len(failed)} 个")
+        if failed:
+            logger.warning(f"失败账号列表：{failed}")
     finally:
         # 关闭浏览器实例
         browser.close()
-        
+
         playwright.stop()
+
+    # [新增] 有账号失败则以非零码退出，保留 Action 失败告警（此时其余账号已照常执行完毕）
+    if failed:
+        raise SystemExit(f"有 {len(failed)}/{len(succeeded) + len(failed)} 个账号任务失败：{failed}")
 
         
 
