@@ -261,7 +261,34 @@ def dump_debug_artifacts(page, name):
         logger.warning(f"保存失败诊断信息时发生意外错误: {e}")
 
 
-def do_user_task(browser, username, cookies, targets):
+def save_fresh_cookies(context, unique_id):
+    """
+    登录成功后，抓取当前上下文里（抖音已轮换过的）最新 cookie，写到
+    cookie_refresh/COOKIES_<ID>.json。随后 workflow 会用带 secrets:write 权限的
+    PAT 把它回写到 GitHub 密钥，实现"滚动 cookie"——每次跑完都用最新会话接力，
+    绕开"cookie 用一次就失效"的问题。
+
+    只在登录成功后调用（在 do_user_task 的 try 里、好友循环之后），
+    绝不会把登录页那种无效 cookie 写回去。任何异常都只记日志，不影响本次任务。
+    """
+    try:
+        secret_name = f"cookies_{unique_id}".upper()  # 与 config.get_userData 的读取键名保持一致
+        cookies = [c for c in context.cookies() if "douyin" in c.get("domain", "")]
+        if not cookies:
+            logger.warning(f"账号 {unique_id} 未取到 douyin cookie，跳过回写")
+            return
+        os.makedirs("cookie_refresh", exist_ok=True)
+        path = os.path.join("cookie_refresh", f"{secret_name}.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(cookies, f, ensure_ascii=False)
+        logger.info(
+            f"账号 {unique_id} 最新 cookie 已落盘 {path}（{len(cookies)} 条），待 workflow 回写到密钥 {secret_name}"
+        )
+    except Exception as e:
+        logger.warning(f"账号 {unique_id} 保存最新 cookie 失败（不影响本次任务）：{e}")
+
+
+def do_user_task(browser, username, cookies, targets, unique_id):
         account_name = username  # [修复] 固定账号名，避免被下方好友循环变量覆盖，日志/诊断才对得上号
         context = browser.new_context()  # 每个任务使用独立的上下文
         context.set_default_navigation_timeout(config["browserTimeout"])  # 设置导航超时时间为 120 秒
@@ -317,6 +344,9 @@ def do_user_task(browser, username, cookies, targets):
                 # 模拟按下回车键发送消息
                 chat_input.press("Enter")
                 time.sleep(2)  # 发送完等待一会儿
+
+            # [新增] 登录成功，抓取抖音轮换后的最新 cookie 落盘，供 workflow 回写密钥（滚动 cookie）
+            save_fresh_cookies(context, unique_id)
         except Exception:
             # [新增] 失败时保存截图/URL/页面文本，便于区分 cookie 过期 vs 纯加载慢
             dump_debug_artifacts(page, account_name)
@@ -346,7 +376,7 @@ def runTasks():
             logger.info(f"开始处理账号 {username}")
             # [修改] 单个账号失败不再中断整体：隔离异常后继续处理下一个账号
             try:
-                do_user_task(browser, username, cookies, targets)
+                do_user_task(browser, username, cookies, targets, user["unique_id"])
                 logger.info(f"账号 {username} 任务完成")
                 succeeded.append(username)
             except Exception as e:

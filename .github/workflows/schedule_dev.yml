@@ -34,6 +34,24 @@ jobs:
       run: python utils/export_github_env.py
     - name: Run DouYin Spark Flow
       run: python main.py
+    - name: Roll refreshed cookies back to secrets
+      # 滚动 cookie：把本次成功登录后抖音轮换出的最新 cookie 回写到密钥，供下次运行接力。
+      if: ${{ !cancelled() }}
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
+      run: |
+        if [ -z "$GH_TOKEN" ]; then
+          echo "未配置 GH_PAT，跳过 cookie 回写（滚动 cookie 未启用）"; exit 0
+        fi
+        if ! ls cookie_refresh/*.json >/dev/null 2>&1; then
+          echo "本次没有成功登录的账号，无 cookie 需要回写"; exit 0
+        fi
+        for f in cookie_refresh/*.json; do
+          name=$(basename "$f" .json)
+          echo "回写密钥 $name ..."
+          gh secret set "$name" --env user-data --repo "$GITHUB_REPOSITORY" < "$f"
+        done
+        echo "cookie 回写完成"
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
