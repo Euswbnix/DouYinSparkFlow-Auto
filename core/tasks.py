@@ -93,29 +93,31 @@ def scroll_and_select_user(page, username, targets):
 
     logger.debug(f"账号 {username} 进入好友列表页面")
 
-    # [临时诊断] 私信 IM 在 summon iframe 里，探测好友在 iframe 内是否可达（修好后删除）
-    time.sleep(8)  # 给 iframe 内容加载留足时间
-    summon = next((fr for fr in page.frames if "summon" in (fr.url or "")), None)
-    logger.info(f"账号 {username} [诊断] frames={len(page.frames)} summon={'找到' if summon else '没找到'}")
-    if summon:
-        logger.info(f"账号 {username} [诊断] summon.url={summon.url[:90]}")
+    # [临时诊断] 轮询等待 summon iframe 是否最终加载出会话（每5秒一次，最多90秒）
+    os.makedirs("logs", exist_ok=True)
+    loaded = False
+    for _attempt in range(18):
+        time.sleep(5)
+        _t = 5 * (_attempt + 1)
+        summon = next((fr for fr in page.frames if "summon" in (fr.url or "")), None)
+        if not summon:
+            logger.info(f"账号 {username} [诊断] t={_t}s: 未找到 summon iframe")
+            continue
         try:
-            os.makedirs("logs", exist_ok=True)
             content = summon.content()
-            with open("logs/summon_frame.html", "w", encoding="utf-8") as f:
-                f.write(content)
-            logger.info(f"账号 {username} [诊断] 已存 summon_frame.html（{len(content)} 字节）")
-            for kw in ["雾里", "Ami", "荒漠", "还没有", "分享"]:
-                logger.info(f"账号 {username} [诊断] iframe内含'{kw}': {content.count(kw)} 次")
         except Exception as _e:
-            logger.info(f"账号 {username} [诊断] 读取 iframe 内容失败: {_e}")
-        for sel in ['li', 'div[class*="item"]', 'div[class*="conversation"]', 'div[class*="card"]']:
-            try:
-                logger.info(f"账号 {username} [诊断] iframe内 '{sel}' 命中 {summon.locator(sel).count()}")
-            except Exception:
-                pass
+            logger.info(f"账号 {username} [诊断] t={_t}s: 读取iframe出错 {_e}")
+            continue
+        has = any(n in content for n in ["雾里", "Ami", "荒漠"])
+        logger.info(f"账号 {username} [诊断] t={_t}s: iframe长度={len(content)} 含好友名={has}")
+        if has:
+            with open("logs/summon_loaded.html", "w", encoding="utf-8") as f:
+                f.write(content)
+            logger.info(f"账号 {username} [诊断] 好友已出现！已存 summon_loaded.html")
+            loaded = True
+            break
     dump_debug_artifacts(page, f"{username}_convlist")
-    raise RuntimeError("诊断结束：iframe 探测完成")
+    raise RuntimeError(f"诊断结束：iframe 会话是否加载出={loaded}")
 
     found_targets = set()
     # [修改] 复制一份目标列表用于追踪进度
