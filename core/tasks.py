@@ -93,31 +93,13 @@ def scroll_and_select_user(page, username, targets):
 
     logger.debug(f"账号 {username} 进入好友列表页面")
 
-    # [临时诊断] 轮询等待 summon iframe 是否最终加载出会话（每5秒一次，最多90秒）
-    os.makedirs("logs", exist_ok=True)
-    loaded = False
-    for _attempt in range(18):
-        time.sleep(5)
-        _t = 5 * (_attempt + 1)
-        summon = next((fr for fr in page.frames if "summon" in (fr.url or "")), None)
-        if not summon:
-            logger.info(f"账号 {username} [诊断] t={_t}s: 未找到 summon iframe")
-            continue
-        try:
-            content = summon.content()
-        except Exception as _e:
-            logger.info(f"账号 {username} [诊断] t={_t}s: 读取iframe出错 {_e}")
-            continue
-        has = any(n in content for n in ["雾里", "Ami", "荒漠"])
-        logger.info(f"账号 {username} [诊断] t={_t}s: iframe长度={len(content)} 含好友名={has}")
-        if has:
-            with open("logs/summon_loaded.html", "w", encoding="utf-8") as f:
-                f.write(content)
-            logger.info(f"账号 {username} [诊断] 好友已出现！已存 summon_loaded.html")
-            loaded = True
-            break
-    dump_debug_artifacts(page, f"{username}_convlist")
-    raise RuntimeError(f"诊断结束：iframe 会话是否加载出={loaded}")
+    logger.debug(f"账号 {username} 已进入会话列表，开始查找目标好友")
+
+    # 说明（2026-07）：抖音已将私信 IM 迁入内嵌的 summon iframe（summon.bytedance.com），
+    # 会话列表不再渲染到主页面 DOM，下面基于主页面的选择器在改版后已无法命中；且该 IM 组件
+    # 在自动化/无信任设备的浏览器里根本不返回会话数据（反自动化）。要恢复需重写为驱动 iframe
+    # 并使用真实可信浏览器配置，详见 docs/。当前流程会优雅地找不到好友后返回，不再报错。
+    time.sleep(config["friendListTimeout"] / 1000)  # 等待会话列表加载
 
     found_targets = set()
     # [修改] 复制一份目标列表用于追踪进度

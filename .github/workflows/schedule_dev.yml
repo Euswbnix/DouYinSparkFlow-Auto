@@ -3,8 +3,9 @@
 name: 【dev（测试）分支】DouYin Spark Flow Schedule Run
 on:
   workflow_dispatch: # 允许手动触发
-  schedule: # 定时任务
-    - cron: "0 1 * * *" # 每天 1:00 UTC（对应北京时间 9:00）
+  # [已停用 2026-07] 同 schedule.yml：改版后云端无法加载私信，暂停 cron，保留手动触发。
+  # schedule:
+  #   - cron: "0 1 * * *" # 每天 1:00 UTC（对应北京时间 9:00）
 jobs:
   run-main:
     timeout-minutes: 20

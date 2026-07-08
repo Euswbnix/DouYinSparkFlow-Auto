@@ -1,8 +1,10 @@
 name: DouYin Spark Flow Schedule Run
 on:
   workflow_dispatch: # 允许手动触发
-  schedule: # 定时任务
-    - cron: "30 16 * * *" # 每天 16:30 UTC（对应北京时间 00:30）
+  # [已停用 2026-07] 抖音改版把私信 IM 迁入内嵌 iframe 且做了反自动化，云端无法加载会话，
+  # 定时任务只会每天失败。暂停 cron，保留手动触发。要恢复请取消下面注释。
+  # schedule:
+  #   - cron: "30 16 * * *" # 每天 16:30 UTC（对应北京时间 00:30）
 jobs:
   run-main:
     timeout-minutes: 20
