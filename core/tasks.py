@@ -17,8 +17,9 @@ logger = setup_logger(level=config.get("logLevel", "Info"))
 matchMode = config.get("matchMode", "nickname")
 userIDDict = {}
 
-# [新增] 抖音改版后，用 role+文字定位"朋友私信"标签，抗 DOM 结构变动（旧的绝对 XPath 已失效）
-FRIENDS_TAB_SELECTOR = 'xpath=//div[@role="tab"][contains(normalize-space(.), "朋友私信")]'
+# [修复] 改版后好友会话归到"全部"标签下（"朋友私信"标签是空的），且用 role+文字定位抗 DOM 变动。
+# 注意：这里用"全部"而非"朋友私信"——实测好友的"分享[视频]"等消息只出现在"全部"里。
+CONV_TAB_SELECTOR = 'xpath=//div[@role="tab"][normalize-space(.)="全部"]'
 
 def handle_response(response: Response):
     """
@@ -71,9 +72,9 @@ def retry_operation(name, operation, retries=3, delay=2, *args, **kwargs):
 def scroll_and_select_user(page, username, targets):
     """尝试滚动并查找用户名"""
     # 定义目标元素和滚动容器的选择器
-    # [修复] 抖音改版后绝对 XPath 失效，好友标签改用 role+文字定位
-    friends_tab_selector = FRIENDS_TAB_SELECTOR
-    target_selector = 'xpath=//*[@id="sub-app"]/div/div[1]/div[2]/div[2]//div[contains(@class, "semi-list-item-body semi-list-item-body-flex-start")]'
+    # [修复] 抖音改版后绝对 XPath 全部失效，改用 role+文字/相对类名定位
+    friends_tab_selector = CONV_TAB_SELECTOR  # 好友会话在"全部"标签下
+    target_selector = 'xpath=//div[contains(@class, "semi-list-item-body-flex-start")]'
     scrollable_friends_selector = 'xpath=//*[@id="sub-app"]/div/div[1]/div[2]/div[2]/div/div/div[3]/div/div/div/ul/div'
     
     # [修复] 使用模糊匹配 no-more-tip- 前缀，不再依赖精确哈希后缀
@@ -92,8 +93,8 @@ def scroll_and_select_user(page, username, targets):
 
     logger.debug(f"账号 {username} 进入好友列表页面")
 
-    # 确保第一个好友元素加载完成
-    first_friend_selector = 'xpath=//*[@id="sub-app"]/div/div/div[2]/div[2]/div/div/div[1]/div/div/div/ul/div/div/div[1]/li/div'
+    # 确保第一个好友元素加载完成（相对类名定位，抗改版）
+    first_friend_selector = 'xpath=(//div[contains(@class, "semi-list-item-body-flex-start")])[1]'
     page.wait_for_selector(first_friend_selector)
     page.locator(first_friend_selector).click()  # 点击第一个好友，确保列表激活
 
@@ -344,7 +345,7 @@ def do_user_task(browser, username, cookies, targets, unique_id):
             # 立刻回写抖音轮换后的最新 cookie —— 即便后面 UI 步骤失败，cookie 链也不断，
             # 便于持续迭代修选择器，不必每次都让用户重新导出 cookie。
             try:
-                page.wait_for_selector(FRIENDS_TAB_SELECTOR, timeout=45000)
+                page.wait_for_selector(CONV_TAB_SELECTOR, timeout=45000)
                 logger.info(f"账号 {account_name} 已确认登录成功")
                 save_fresh_cookies(context, unique_id)
                 dismiss_popups(page)
