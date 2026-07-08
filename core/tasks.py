@@ -93,17 +93,20 @@ def scroll_and_select_user(page, username, targets):
 
     logger.debug(f"账号 {username} 进入好友列表页面")
 
-    # 确保第一个好友元素加载完成（相对类名定位，抗改版）
-    first_friend_selector = 'xpath=(//div[contains(@class, "semi-list-item-body-flex-start")])[1]'
-    page.wait_for_selector(first_friend_selector)
-    page.locator(first_friend_selector).click()  # 点击第一个好友，确保列表激活
+    # 等待会话列表加载（不再点开第一条——新版点开会导航进聊天详情，破坏列表）
+    page.wait_for_selector(target_selector)
+    time.sleep(config["friendListTimeout"] / 1000)  # 等待好友列表加载
 
     logger.debug(f"账号 {username} 已激活好友列表，开始滚动查找目标好友")
 
-    time.sleep(config["friendListTimeout"] / 1000)  # 等待好友列表加载
-
-    # [临时诊断] 抓"全部"列表真实 DOM + 命中数，用于修正会话行/名字选择器（修好后删除）
-    logger.info(f"账号 {username} [诊断] target_selector 命中 {len(page.locator(target_selector).all())} 个元素")
+    # [临时诊断] 抓"全部"列表真实 DOM，并逐行打印文字，用于修正会话行/名字选择器（修好后删除）
+    _diag = page.locator(target_selector).all()
+    logger.info(f"账号 {username} [诊断] target_selector 命中 {len(_diag)} 个元素")
+    for _i, _el in enumerate(_diag[:12]):
+        try:
+            logger.info(f"账号 {username} [诊断] 行{_i}: {repr(_el.inner_text()[:50])}")
+        except Exception as _e:
+            logger.info(f"账号 {username} [诊断] 行{_i} inner_text失败: {_e}")
     dump_debug_artifacts(page, f"{username}_convlist")
 
     found_targets = set()
