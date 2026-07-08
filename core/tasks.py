@@ -102,6 +102,10 @@ def scroll_and_select_user(page, username, targets):
 
     time.sleep(config["friendListTimeout"] / 1000)  # 等待好友列表加载
 
+    # [临时诊断] 抓"全部"列表真实 DOM + 命中数，用于修正会话行/名字选择器（修好后删除）
+    logger.info(f"账号 {username} [诊断] target_selector 命中 {len(page.locator(target_selector).all())} 个元素")
+    dump_debug_artifacts(page, f"{username}_convlist")
+
     found_targets = set()
     # [修改] 复制一份目标列表用于追踪进度
     remaining_targets = set(targets)
