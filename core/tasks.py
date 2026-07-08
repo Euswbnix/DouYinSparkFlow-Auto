@@ -93,21 +93,29 @@ def scroll_and_select_user(page, username, targets):
 
     logger.debug(f"账号 {username} 进入好友列表页面")
 
-    # 等待会话列表加载（不再点开第一条——新版点开会导航进聊天详情，破坏列表）
-    page.wait_for_selector(target_selector)
-    time.sleep(config["friendListTimeout"] / 1000)  # 等待好友列表加载
-
-    logger.debug(f"账号 {username} 已激活好友列表，开始滚动查找目标好友")
-
-    # [临时诊断] 抓"全部"列表真实 DOM，并逐行打印文字，用于修正会话行/名字选择器（修好后删除）
-    _diag = page.locator(target_selector).all()
-    logger.info(f"账号 {username} [诊断] target_selector 命中 {len(_diag)} 个元素")
-    for _i, _el in enumerate(_diag[:12]):
+    # [临时诊断] 私信 IM 在 summon iframe 里，探测好友在 iframe 内是否可达（修好后删除）
+    time.sleep(8)  # 给 iframe 内容加载留足时间
+    summon = next((fr for fr in page.frames if "summon" in (fr.url or "")), None)
+    logger.info(f"账号 {username} [诊断] frames={len(page.frames)} summon={'找到' if summon else '没找到'}")
+    if summon:
+        logger.info(f"账号 {username} [诊断] summon.url={summon.url[:90]}")
         try:
-            logger.info(f"账号 {username} [诊断] 行{_i}: {repr(_el.inner_text()[:50])}")
+            os.makedirs("logs", exist_ok=True)
+            content = summon.content()
+            with open("logs/summon_frame.html", "w", encoding="utf-8") as f:
+                f.write(content)
+            logger.info(f"账号 {username} [诊断] 已存 summon_frame.html（{len(content)} 字节）")
+            for kw in ["雾里", "Ami", "荒漠", "还没有", "分享"]:
+                logger.info(f"账号 {username} [诊断] iframe内含'{kw}': {content.count(kw)} 次")
         except Exception as _e:
-            logger.info(f"账号 {username} [诊断] 行{_i} inner_text失败: {_e}")
+            logger.info(f"账号 {username} [诊断] 读取 iframe 内容失败: {_e}")
+        for sel in ['li', 'div[class*="item"]', 'div[class*="conversation"]', 'div[class*="card"]']:
+            try:
+                logger.info(f"账号 {username} [诊断] iframe内 '{sel}' 命中 {summon.locator(sel).count()}")
+            except Exception:
+                pass
     dump_debug_artifacts(page, f"{username}_convlist")
+    raise RuntimeError("诊断结束：iframe 探测完成")
 
     found_targets = set()
     # [修改] 复制一份目标列表用于追踪进度
