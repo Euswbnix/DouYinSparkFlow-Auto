@@ -17,6 +17,9 @@ logger = setup_logger(level=config.get("logLevel", "Info"))
 matchMode = config.get("matchMode", "nickname")
 userIDDict = {}
 
+# [新增] 抖音改版后，用 role+文字定位"朋友私信"标签，抗 DOM 结构变动（旧的绝对 XPath 已失效）
+FRIENDS_TAB_SELECTOR = 'xpath=//div[@role="tab"][contains(normalize-space(.), "朋友私信")]'
+
 def handle_response(response: Response):
     """
     只监听你要的那个接口响应
@@ -68,7 +71,8 @@ def retry_operation(name, operation, retries=3, delay=2, *args, **kwargs):
 def scroll_and_select_user(page, username, targets):
     """尝试滚动并查找用户名"""
     # 定义目标元素和滚动容器的选择器
-    friends_tab_selector = 'xpath=//*[@id="sub-app"]/div/div/div[1]/div[2]'
+    # [修复] 抖音改版后绝对 XPath 失效，好友标签改用 role+文字定位
+    friends_tab_selector = FRIENDS_TAB_SELECTOR
     target_selector = 'xpath=//*[@id="sub-app"]/div/div[1]/div[2]/div[2]//div[contains(@class, "semi-list-item-body semi-list-item-body-flex-start")]'
     scrollable_friends_selector = 'xpath=//*[@id="sub-app"]/div/div[1]/div[2]/div[2]/div/div/div[3]/div/div/div/ul/div'
     
@@ -81,7 +85,8 @@ def scroll_and_select_user(page, username, targets):
     logger.debug(f"账号 {username} 目标好友列表: {targets}")
 
     logger.debug(f"账号 {username} 点击进入好友标签页")
-    # 点击好友标签页
+    # 点击好友标签页（先关一次弹窗，避免遮挡）
+    dismiss_popups(page)
     page.wait_for_selector(friends_tab_selector)
     page.locator(friends_tab_selector).click()
 
@@ -288,6 +293,21 @@ def save_fresh_cookies(context, unique_id):
         logger.warning(f"账号 {unique_id} 保存最新 cookie 失败（不影响本次任务）：{e}")
 
 
+def dismiss_popups(page):
+    """
+    尽力关闭抖音新功能引导弹窗（如"我知道了"），避免其遮挡后续元素导致点击/可见性判定失败。
+    best-effort：找不到或点不动都不抛异常。
+    """
+    for text in ["我知道了", "知道了", "我知道啦", "下次再说"]:
+        try:
+            btn = page.locator(f'xpath=//*[self::button or @role="button" or contains(@class,"btn")][contains(normalize-space(.), "{text}")]')
+            if btn.count() > 0:
+                btn.first.click(timeout=3000)
+                logger.debug(f"已关闭引导弹窗: {text}")
+        except Exception:
+            pass
+
+
 def do_user_task(browser, username, cookies, targets, unique_id):
         account_name = username  # [修复] 固定账号名，避免被下方好友循环变量覆盖，日志/诊断才对得上号
         context = browser.new_context()  # 每个任务使用独立的上下文
@@ -319,6 +339,17 @@ def do_user_task(browser, username, cookies, targets, unique_id):
                 delay=5,
                 url="https://creator.douyin.com/creator-micro/data/following/chat",
             )
+
+            # [新增] 确认登录成功（登录页不会有"朋友私信"标签）。一旦确认登录，
+            # 立刻回写抖音轮换后的最新 cookie —— 即便后面 UI 步骤失败，cookie 链也不断，
+            # 便于持续迭代修选择器，不必每次都让用户重新导出 cookie。
+            try:
+                page.wait_for_selector(FRIENDS_TAB_SELECTOR, timeout=45000)
+                logger.info(f"账号 {account_name} 已确认登录成功")
+                save_fresh_cookies(context, unique_id)
+                dismiss_popups(page)
+            except Exception:
+                logger.warning(f"账号 {account_name} 45秒内未出现'朋友私信'标签（可能停在登录页），不提前回写")
 
             logger.debug(f"账号 {account_name} 开始发送消息")
             # 滚动并选择用户
